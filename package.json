@@ -1,0 +1,9 @@
+{
+    "name":"rbxrank",
+    "version":"0.0.1",
+    "dependencies":{
+        "express":"",
+        "passport":"",
+        "passport-http-bearer":""
+    }
+}
