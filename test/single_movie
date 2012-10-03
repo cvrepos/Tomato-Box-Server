@@ -1,0 +1,3 @@
+#!/bin/bash
+curl -v -G -d "id=Titanic" -d "access_token=B8CF722F917D"  http://127.0.0.1:8989/add 
+echo
