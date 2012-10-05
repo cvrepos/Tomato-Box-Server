@@ -181,16 +181,18 @@ function findRanking_n(movies, bUpdate, response)
   var rankings = new Array();
   for(var i = 0; i <movies.length ; i++)
   {
+   // induce scope by anonymous function 
+   (function(){
     var movie = movies[i];
     console.log("["+ i+ "]Movie is :" + movie);
     var ranking;
     if((ranking = cache[movie])){
         console.log("Ranking " + JSON.stringify(ranking) + " in the cache.");
         collectRankings(rankings, ranking, movies.length, response);
-        continue;
+        return;
     }
 
-    //movie not found in cache
+    // movie not found in cache
     try{
          connection.collection("movies", function(err, coll){
          if(err){
@@ -234,6 +236,8 @@ function findRanking_n(movies, bUpdate, response)
         console.log("Exception processing collection:" + err);
         collectRankings(rankings, null, movies.length, response);
     }
+    //end - anonymous function
+   })();
   }
   
 }
