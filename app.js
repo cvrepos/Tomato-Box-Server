@@ -1,5 +1,10 @@
-//change API_KEY to your auth key obtained from rottentomatoes.com
-var API_KEY = "qzev8s925mvwmvpp75rubuk4";
+// API_KEY is key obtained from rottentomatoes.com
+var API_KEY = process.env.API_KEY;
+
+if(API_KEY == null){
+    console.log("API_KEY is null. Please export API_KEY to correct value following install instructions.");
+    process.exit(1);
+}
 
 var sys = require('util')
   , http = require('http')
@@ -151,17 +156,23 @@ function findRanking(movie, bUpdate, response)
     }
 }
 
-function collectRankings(rankings, ranking, total, response, force)
+function collectRankings(rankings, ranking, total, movie, response, force)
 {
     if(ranking == null){
         ranking = new Object();
         ranking.critics_score = "none";
         ranking.audience_score = "none";
-        ranking.id = "";
+        ranking._id = "";
     }
-    rankings.push(ranking);
-    
+    var wrapper = new Object();
+    wrapper.critics_score = ranking.critics_score;
+    wrapper.audience_score = ranking.audience_score;
+    wrapper._id = ranking._id;
+    wrapper.rlink = ranking.rlink;
+    wrapper.context = movie.context;
 
+    rankings.push(wrapper);
+    
     if(rankings.length != total && force != true){
         return;
     }
@@ -176,6 +187,11 @@ function collectRankings(rankings, ranking, total, response, force)
     response.end();
 }
 
+function addContext(ranking, movie)
+{
+    ranking.context = movie.context;
+}
+
 function findRanking_n(movies, bUpdate, response)
 {
   var rankings = new Array();
@@ -184,11 +200,11 @@ function findRanking_n(movies, bUpdate, response)
    // induce scope by anonymous function 
    (function(){
     var movie = movies[i];
-    console.log("["+ i+ "]Movie is :" + movie);
+    console.log("["+ i+ "]Movie is :" + movie.name);
     var ranking;
-    if((ranking = cache[movie])){
+    if((ranking = cache[movie.name])){
         console.log("Ranking " + JSON.stringify(ranking) + " in the cache.");
-        collectRankings(rankings, ranking, movies.length, response);
+        collectRankings(rankings, ranking, movies.length, movie, response);
         return;
     }
 
@@ -197,44 +213,48 @@ function findRanking_n(movies, bUpdate, response)
          connection.collection("movies", function(err, coll){
          if(err){
            console.log("Error obtaining movies collection.");
-           collectRankings(rankings, null, movies.length, response,  true);
+           collectRankings(rankings, null, movies.length, movie, response,  true);
            return;
          }
 
-         coll.findOne({_id:movie}, function(err, content){
+         coll.findOne({_id:movie.name}, function(err, content){
             if(content && bUpdate == false){
                 //var data = respond(content, response, movie, true);
                 cache[content._id] = content;
-                collectRankings(rankings, content, movies.length, response);
+                collectRankings(rankings, content, movies.length, movie, response);
                 console.log("Found Movie in DB.:" + content._id +" data:" + content);
             }else{
             //else query rotten tomatoes directly
-            getRankings(movie, function(id, ratings, rlink){
-                    var info = new Object();
+            getRankings(movie.name, function(id, ratings, rlink){
+                    var info = new Ranking();
                     if(ratings){
                         console.log("critics ranking is:" + ratings.critics_score + ". audience ranking is:" + ratings.audience_score);
                     }
                     info.critics_score = ratings ? ratings.critics_score : 0;
                     info.audience_score = ratings ? ratings.audience_score : 0;
-                    info._id = movie;
+                    info._id = movie.name;
                     info.rlink = rlink;
-                    try{
-                        coll.save( info, {safe:true}, function(err){
-                        //var jsonContent = respond(info, response, movie, true);
-                        console.log("successfully inserted:" + info);
-                        collectRankings(rankings, info, movies.length, response);
-                        cache[movie] = info;
-                        });
-                    }catch(err){
-                        console.log("Exception caught inserting:" + err);
-                    }
+                    (function(){
+                        var scopedInfo = info;
+                        var scopedMovie = movie;
+                        try{
+                            cache[scopedMovie.name] = scopedInfo;
+                            coll.save( scopedInfo, {safe:true}, function(err){
+                            //var jsonContent = respond(info, response, movie, true);
+                            console.log("successfully inserted:" + scopedInfo);
+                            collectRankings(rankings, scopedInfo, movies.length, movie, response);
+                            });
+                        }catch(err){
+                            console.log("Exception caught inserting:" + err);
+                        }
+                    })();
                 });
             }
         });
       });
     }catch(err){
         console.log("Exception processing collection:" + err);
-        collectRankings(rankings, null, movies.length, response);
+        collectRankings(rankings, null, movies.length, movie, response);
     }
     //end - anonymous function
    })();
@@ -306,17 +326,32 @@ function normalize(name)
     var trimmed = replaced.trim().toUpperCase();
     return trimmed;
 }
-function normalize_n(names)
+
+function Movie(name, context)
 {
-    var aNames = new Array();
-    for(var i=0; i<names.length; i++){
-        var name = names[i];
+    this.name = name;
+    this.context = context; 
+}
+function Ranking()
+{
+    this.critics_score = 0;
+    this.audience_score = 0;
+    this._id = null;
+    this.rlink = null;
+}
+
+function normalize_n(movies)
+{
+    var amovies = new Array();
+    for(var i=0; i<movies.length; i++){
+        var name = movies[i].name;
         var decoded  = decodeURIComponent(name);
         var replaced = decoded.replace(/\(.*\)/,"");
         var trimmed = replaced.trim().toUpperCase();
-        aNames.push(trimmed);
+        var movie = new Movie(trimmed, movies[i].context);
+        amovies.push(movie);
     }
-    return aNames;
+    return amovies;
 }
 
 var mongourl = generate_mongo_url(mongo);
@@ -326,7 +361,6 @@ require('mongodb').connect(mongourl, function(err, conn){
           console.log("Error connecting to mongodb:" + err); 
      }else{
           connection = conn;
-          console.log("Connected to mongodb:" + connection); 
      }
 }); 
 
@@ -359,13 +393,20 @@ function httpReqHandler(request, response)
 }
 var cache = new Array();
 
+// Start - backward compatible interface
 app.get("/add", 
   passport.authenticate('bearer', { session: false }),
   httpReqHandler);
+// End
 
-app.post("/add", 
+// XXX- new interfaces
+app.get("/get", 
+  passport.authenticate('bearer', { session: false }),
+  httpReqHandler);
+
+app.post("/get", 
   passport.authenticate('bearer', { session: false }),
   httpReqHandler);
 
 app.listen(process.env.VCAP_APP_PORT || 8989);
-console.log('Server started /add');
+console.log('Server started');
