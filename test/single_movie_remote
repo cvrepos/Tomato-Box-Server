@@ -1,0 +1,3 @@
+#!/bin/bash
+curl -v -G -d "id=Titanic" -d "access_token=B8CF722F917D"  http://rbxrank.aws.af.cm//get
+echo

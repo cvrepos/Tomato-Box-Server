@@ -104,7 +104,7 @@ function respond(content, response, movie, stringify)
     }else{
         data = JSON.stringify(content);
     }
-    console.log("Sending data:"+ data);
+    //console.log("Sending data:"+ data);
     response.setHeader("Content-Length", data.length);
     response.setHeader("Content-Type", "text/json");
     response.writeHead(200);
@@ -132,7 +132,7 @@ function findRanking(movie, bUpdate, response)
             getRankings(movie, function(id, ratings, rlink){
                     var info = new Object();
                     if(ratings){
-                        console.log("critics ranking is:" + ratings.critics_score + ". audience ranking is:" + ratings.audience_score);
+                        //console.log("critics ranking is:" + ratings.critics_score + ". audience ranking is:" + ratings.audience_score);
                     }
                     info.critics_score = ratings ? ratings.critics_score : 0;
                     info.audience_score = ratings ? ratings.audience_score : 0;
@@ -141,7 +141,7 @@ function findRanking(movie, bUpdate, response)
                     try{
                         coll.save( info, {safe:true}, function(err){
                         var jsonContent = respond(info, response, movie, true);
-                        console.log("successfully inserted:" + jsonContent);
+                        //console.log("successfully inserted:" + jsonContent);
                         });
                     }catch(err){
                         console.log("Exception caught inserting:" + err);
@@ -181,7 +181,7 @@ function collectRankings(rankings, ranking, total, movie, response, force)
     if(rankings.length == total || force == true){
         data = JSON.stringify(rankings);
     }
-    console.log("Sending data:"+ data);
+    //console.log("Sending data:"+ data);
     response.writeHead(200, {'Content-Length': data.length, 'Content-Type': 'text/json'});
     response.write(data);
     response.end();
@@ -200,10 +200,10 @@ function findRanking_n(movies, bUpdate, response)
    // induce scope by anonymous function 
    (function(){
     var movie = movies[i];
-    console.log("["+ i+ "]Movie is :" + movie.name);
+    //console.log("["+ i+ "]Movie is :" + movie.name);
     var ranking;
     if((ranking = cache[movie.name])){
-        console.log("Ranking " + JSON.stringify(ranking) + " in the cache.");
+        //console.log("Ranking " + JSON.stringify(ranking) + " in the cache.");
         collectRankings(rankings, ranking, movies.length, movie, response);
         return;
     }
@@ -212,7 +212,7 @@ function findRanking_n(movies, bUpdate, response)
     try{
          connection.collection("movies", function(err, coll){
          if(err){
-           console.log("Error obtaining movies collection.");
+           //console.log("Error obtaining movies collection.");
            collectRankings(rankings, null, movies.length, movie, response,  true);
            return;
          }
@@ -222,13 +222,13 @@ function findRanking_n(movies, bUpdate, response)
                 //var data = respond(content, response, movie, true);
                 cache[content._id] = content;
                 collectRankings(rankings, content, movies.length, movie, response);
-                console.log("Found Movie in DB.:" + content._id +" data:" + content);
+                //console.log("Found Movie in DB.:" + content._id +" data:" + content);
             }else{
             //else query rotten tomatoes directly
             getRankings(movie.name, function(id, ratings, rlink){
                     var info = new Ranking();
                     if(ratings){
-                        console.log("critics ranking is:" + ratings.critics_score + ". audience ranking is:" + ratings.audience_score);
+                        //console.log("critics ranking is:" + ratings.critics_score + ". audience ranking is:" + ratings.audience_score);
                     }
                     info.critics_score = ratings ? ratings.critics_score : 0;
                     info.audience_score = ratings ? ratings.audience_score : 0;
@@ -241,7 +241,7 @@ function findRanking_n(movies, bUpdate, response)
                             cache[scopedMovie.name] = scopedInfo;
                             coll.save( scopedInfo, {safe:true}, function(err){
                             //var jsonContent = respond(info, response, movie, true);
-                            console.log("successfully inserted:" + scopedInfo);
+                            //console.log("successfully inserted:" + scopedInfo);
                             collectRankings(rankings, scopedInfo, movies.length, movie, response);
                             });
                         }catch(err){
@@ -263,7 +263,7 @@ function findRanking_n(movies, bUpdate, response)
 }
 
 function getRankings(movie, callback) {
-    console.log("movie is :" + movie);
+    //console.log("movie is :" + movie);
     var urlPath = "/api/public/v1.0/movies.json?q=" + encodeURIComponent(movie) + "&page_limit=5&page=1&apikey=" + API_KEY;
     var options = {
       host: 'api.rottentomatoes.com',
@@ -273,7 +273,7 @@ function getRankings(movie, callback) {
     };
     var msgBody = "";
     var req = http.request(options, function(res) {
-            console.log('STATUS: ' + res.statusCode);
+            //console.log('STATUS: ' + res.statusCode);
             res.setEncoding('utf8');
             res.on('data', function (chunk) {
                 msgBody += chunk;
@@ -298,12 +298,12 @@ function getRankings(movie, callback) {
                         var item = movieObject.movies[i];
                         if(movie == item.title.toUpperCase()){
                            var id = item.id;
-                           console.log("Id of the movie is:" + id);
+                           //console.log("Id of the movie is:" + id);
                            var rlink = item.links.alternate;
                            callback(id, item.ratings, rlink);
                            return;
                         }else{
-                          console.log("title=[" + movie + "] and movie=[" + item.title + "] does not match.");
+                          //console.log("title=[" + movie + "] and movie=[" + item.title + "] does not match.");
                         }
                     }
                     callback(null, null, null);
@@ -366,10 +366,10 @@ require('mongodb').connect(mongourl, function(err, conn){
 
 function httpReqHandler(request, response)
 {
-  console.log(request.url);
+  //console.log(request.url);
   var result = require('url').parse(request.url, true);
-  console.log(JSON.stringify(result));
-  console.log(JSON.stringify(request.body));
+  //console.log(JSON.stringify(result));
+  //console.log(JSON.stringify(request.body));
   var bUpdate = false;
   if(result && result.query && result.query.update){
      if(result.query.update == 1){
@@ -378,7 +378,7 @@ function httpReqHandler(request, response)
      }
   }
   if(result && result.query && result.query.id){
-      console.log(result.query.id);
+      //console.log(result.query.id);
       var nMovie = normalize(result.query.id);
       findRanking(nMovie, bUpdate, response);
   } else if(request.body && request.body.ids){
