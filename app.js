@@ -156,6 +156,40 @@ function findRanking(movie, bUpdate, response)
     }
 }
 
+function updateRankings(rankings, ranking, index, response, force)
+{
+    if(ranking == null){
+        ranking = new Object();
+        ranking.critics_score = "none";
+        ranking.audience_score = "none";
+        ranking._id = "";
+    }
+    var wrapper = rankings[index];
+    wrapper.critics_score = ranking.critics_score;
+    wrapper.audience_score = ranking.audience_score;
+    wrapper._id = ranking._id;
+    wrapper.rlink = ranking.rlink;
+
+    if(rankings.length != total && force != true){
+        return;
+    }
+
+    var data;
+    if(rankings.length == total || force == true){
+        data = JSON.stringify(rankings);
+    }
+    fs.writeFile('titles.json.txt', data, function (err) {
+            if (err){
+            console.log("Error saving rankings file");
+            }
+            console.log('file  saved!');
+    });
+    //console.log("Sending data:"+ data);
+    data = "Ranking is being written to titles.json.txt";
+    response.writeHead(200, {'Content-Length': data.length, 'Content-Type': 'text/json'});
+    response.write(data);
+    response.end();
+}
 function collectRankings(rankings, ranking, total, movie, response, force)
 {
     if(ranking == null){
@@ -262,6 +296,77 @@ function findRanking_n(movies, bUpdate, response)
   
 }
 
+function updateRanking_n(movies, response)
+{
+  var bUpdate = false;
+  for(var i = 0; i <movies.length ; i++)
+  {
+   // induce scope by anonymous function 
+   (function(){
+    var movie = movies[i];
+    var index = i;
+    console.log("["+ i+ "]Movie is :" + movie.name);
+    var ranking;
+    if((ranking = cache[movie.name])){
+        console.log("Ranking " + JSON.stringify(ranking) + " in the cache.");
+        updateRankings(movies, ranking, index, response);
+        return;
+    }
+
+    // movie not found in cache
+    try{
+         connection.collection("movies", function(err, coll){
+         if(err){
+           console.log("Error obtaining movies collection.");
+           updateRankings(movies, null, index, response);
+           return;
+         }
+
+         coll.findOne({_id:movie.name}, function(err, content){
+            if(content && bUpdate == false){
+                //var data = respond(content, response, movie, true);
+                cache[content._id] = content;
+                updateRankings(movies, content, index, response);
+                console.log("Found Movie in DB.:" + content._id +" data:" + content);
+            }else{
+            //else query rotten tomatoes directly
+            getRankings(movie.name, function(id, ratings, rlink){
+                    var info = new Ranking();
+                    if(ratings){
+                        console.log("critics ranking is:" + ratings.critics_score + ". audience ranking is:" + ratings.audience_score);
+                    }
+                    info.critics_score = ratings ? ratings.critics_score : 0;
+                    info.audience_score = ratings ? ratings.audience_score : 0;
+                    info._id = movie.name;
+                    info.rlink = rlink;
+                    (function(){
+                        var scopedInfo = info;
+                        var scopedMovie = movie;
+                        var index = index;
+                        try{
+                            cache[scopedMovie.name] = scopedInfo;
+                            coll.save( scopedInfo, {safe:true}, function(err){
+                            //var jsonContent = respond(info, response, movie, true);
+                            //console.log("successfully inserted:" + scopedInfo);
+                            updateRankings(movies, scopedInfo, index, response);
+                            });
+                        }catch(err){
+                            console.log("Exception caught inserting:" + err);
+                        }
+                    })();
+                });
+            }
+        });
+      });
+    }catch(err){
+        console.log("Exception processing collection:" + err);
+        updateRankings(movies, null, index, response);
+    }
+    //end - anonymous function
+   })();
+  }
+  
+}
 function getRankings(movie, callback) {
     //console.log("movie is :" + movie);
     var urlPath = "/api/public/v1.0/movies.json?q=" + encodeURIComponent(movie) + "&page_limit=5&page=1&apikey=" + API_KEY;
@@ -391,6 +496,99 @@ function httpReqHandler(request, response)
       response.end();
   }
 }
+
+function updateHandler(request, response)
+{
+  console.log("invoked update");
+  if(request.body && request.body.rankings){
+      var rankings = request.body.rankings;
+      console.log(JSON.stringify(rankings));
+      for(var i=0; i<rankings.length; i++){
+          var ranking = rankings[i];
+          cache[ranking._id] = ranking;
+          
+          try{
+              (function(){
+                 var scopedInfo = ranking;
+                 var index = i;
+                 connection.collection("movies", function(err, coll){
+                    if(err){
+                      console.log("Error obtaining movies collection.");
+                      response.writeHead(500, {'Content-Type': 'text/html'});
+                      response.write("invalid url");
+                      response.end();
+                      return;
+                    }
+                    coll.save( scopedInfo, {safe:true}, function(err){
+                        console.log("successfully inserted:" + JSON.stringify(scopedInfo));
+                        if((index + 1) ==  rankings.length){
+                              response.writeHead(200, {'Content-Type': 'text/html'});
+                              response.write("done updating");
+                              response.end();
+                        }
+                    });
+                 });
+              })();
+          }//end try
+          catch(err)
+          {
+              console.log("Error updateHandler");
+              response.writeHead(500, {'Content-Type': 'text/html'});
+              response.write("invalid url");
+              response.end();
+          }
+      }
+  }
+  else{
+      response.writeHead(500, {'Content-Type': 'text/html'});
+      response.write("invalid url");
+      response.end();
+  }
+}
+
+function pullRedboxTitles(request, response)
+{
+  console.log(request.url);
+  var result = require('url').parse(request.url, true);
+  if(result && result.query && result.query.d){
+      // pull request from redbox.com 
+      //check if the file exists for the date - 
+      //fs.exist
+
+      getRedboxTitles(updateRedboxRankings, response);
+      
+  }
+  else{
+      response.writeHead(500, {'Content-Type': 'text/html'});
+      response.write("invalid url");
+      response.end();
+  }
+}
+
+function updateRedboxRankings(titles, response)
+{
+    console.log("updating ranking for[%d] titles", titles.length);
+    updateRanking_n(titles,response);
+
+}
+
+function getRedboxTitles(callback, response) 
+{
+    var request = require('request');
+    request('http://www.redbox.com/api/product/js/__titles', function (error, response, body) {
+            if (!error && response.statusCode == 200) {
+                var movieObjects = JSON.parse(body);
+                if(movieObjects.movies == null || movieObjects.movies.length == 0){
+                    callback(null, response);
+                    return;
+                }
+                callback(movieObjects, response);
+            }else{
+                callback(null, response);
+            }
+    });
+}
+
 var cache = new Array();
 
 // Start - backward compatible interface
@@ -407,6 +605,15 @@ app.get("/get",
 app.post("/get", 
   passport.authenticate('bearer', { session: false }),
   httpReqHandler);
+
+// XXX- will be called by a script evry night to pull movie information from redbox.com
+//app.get("/query", 
+//  passport.authenticate('bearer', { session: false }),
+//  pullRedboxTitles);
+
+app.post("/update",
+  passport.authenticate('bearer', { session: false }),
+  updateHandler);
 
 app.listen(process.env.VCAP_APP_PORT || 8989);
 console.log('Server started');

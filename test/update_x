@@ -1,0 +1,10 @@
+#!/bin/bash
+curl -v -H "Accept: application/json" -H "Content-type: application/json" -X POST -d  \
+         '{"rankings":[ 
+             {"critics_score":26,"audience_score":62,"_id":"UNDERWORLD: AWAKENING","rlink":"http://www.rottentomatoes.com/m/underworld_awakening/"},
+             {"critics_score":13,"audience_score":24,"_id":"PIRANHA DD","rlink":"http://www.rottentomatoes.com/m/piranha_3dd/"},
+             {"critics_score":92,"audience_score":96,"_id":"THE AVENGERS","rlink":"http://www.rottentomatoes.com/m/marvels_the_avengers/"},
+             {"critics_score":34,"audience_score":54,"_id":"BATTLESHIP","rlink":"http://www.rottentomatoes.com/m/battleship/"} 
+          ]}' \
+    http://127.0.0.1:8989/update?access_token=B8CF722F917D
+echo
